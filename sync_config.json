@@ -1,0 +1,11 @@
+{
+    "watch_dirs": [
+        {
+            "local": "D:/data/web",
+            "wsl": "//wsl.localhost/Ubuntu22.04/data/web",
+            "exclude_patterns": [
+                ".git"
+            ]
+        }
+    ]
+}
