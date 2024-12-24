@@ -486,7 +486,18 @@ class ConfigDialog(tk.Toplevel):
 class FileUploadHandler(FileSystemEventHandler):
     def __init__(self, watch_config):
         self.watch_config = watch_config
+        self.file_hashes = {}  # 添加文件hash缓存字典
         super().__init__()
+
+    def get_file_hash(self, file_path):
+        """计算文件的 MD5 hash"""
+        import hashlib
+        try:
+            with open(file_path, 'rb') as f:
+                return hashlib.md5(f.read()).hexdigest()
+        except Exception as e:
+            logging.error(f"计算文件hash时出错: {e}")
+            return None
 
     def should_process_file(self, file_path):
         """检查文件是否应该被处理"""
@@ -498,32 +509,63 @@ class FileUploadHandler(FileSystemEventHandler):
 
         # 添加对临时文件的检查
         if file_name.endswith('~') or file_name.startswith('.'):
-            logging.info(f"跳过临时文件: {file_path}")
+            #logging.info(f"跳过临时文件: {file_path}")
             return False
 
         for pattern in self.watch_config.get('exclude_patterns', []):
             # 检查路径中的每个部分是否匹配排除规则
             if any(fnmatch(part, pattern.rstrip('/*')) for part in path_parts):
-                logging.info(f"跳过排除的文件: {file_path}")
+                #logging.info(f"跳过排除的文件: {file_path}")
                 return False
             # 保对完整路径的匹配检查
             if fnmatch(relative_path, pattern):
-                logging.info(f"跳过排除的文件: {file_path}")
+                #logging.info(f"跳过排除的文件: {file_path}")
                 return False
         return True
 
     def on_modified(self, event):
-        # 只有文件被修改时触发
         if event.is_directory:
             return
-        if self.should_process_file(event.src_path):
-            self.copy_to_wsl(event.src_path)
+        
+        if not self.should_process_file(event.src_path):
+            return
+
+        # 检查文件修改时间
+        try:
+            mtime = os.path.getmtime(event.src_path)
+            current_time = time.time()
+            if current_time - mtime > 1800:  # 1800秒 = 30分钟
+                logging.debug(f"文件修改时间超过30分钟，跳过同步: {event.src_path}")
+                return
+        except Exception as e:
+            logging.error(f"获取文件修改时间失败: {e}")
+            return
+
+        # 计算新的文件hash
+        current_hash = self.get_file_hash(event.src_path)
+        if current_hash is None:
+            return
+
+        # 比较文件hash是否发生变化
+        if event.src_path in self.file_hashes and self.file_hashes[event.src_path] == current_hash:
+            logging.debug(f"文件内容未变化，跳过同步: {event.src_path}")
+            return
+
+        # 更新hash缓存并执行复制
+        self.file_hashes[event.src_path] = current_hash
+        self.copy_to_wsl(event.src_path)
 
     def on_created(self, event):
-        # 只有文件被创建时触发
         if event.is_directory:
             return
-        if self.should_process_file(event.src_path):
+        
+        if not self.should_process_file(event.src_path):
+            return
+
+        # 保存新文件的hash
+        current_hash = self.get_file_hash(event.src_path)
+        if current_hash is not None:
+            self.file_hashes[event.src_path] = current_hash
             self.copy_to_wsl(event.src_path)
 
     def copy_to_wsl(self, file_path):
