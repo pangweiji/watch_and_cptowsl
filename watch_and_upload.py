@@ -502,25 +502,46 @@ class FileUploadHandler(FileSystemEventHandler):
     def should_process_file(self, file_path):
         """检查文件是否应该被处理"""
         from fnmatch import fnmatch
+        import re
 
         file_name = os.path.basename(file_path)
         relative_path = os.path.relpath(file_path, self.watch_config['local'])
-        path_parts = relative_path.split(os.sep)  # 将路径分割成各个部分
+        path_parts = relative_path.split(os.sep)
 
-        # 添加对临时文件的检查
+        # 跳过临时文件
         if file_name.endswith('~') or file_name.startswith('.'):
-            #logging.info(f"跳过临时文件: {file_path}")
             return False
 
         for pattern in self.watch_config.get('exclude_patterns', []):
-            # 检查路径中的每个部分是否匹配排除规则
-            if any(fnmatch(part, pattern.rstrip('/*')) for part in path_parts):
-                #logging.info(f"跳过排除的文件: {file_path}")
-                return False
-            # 保对完整路径的匹配检查
-            if fnmatch(relative_path, pattern):
-                #logging.info(f"跳过排除的文件: {file_path}")
-                return False
+            try:
+                # 处理目录匹配模式 (以 / 结尾的模式)
+                if pattern.endswith('/'):
+                    dir_pattern = pattern.rstrip('/')
+                    # 检查路径中是否包含指定目录名
+                    if dir_pattern in path_parts:
+                        return False
+                
+                # 处理正则表达式模式 (以 r: 开头的模式)
+                elif pattern.startswith('r:'):
+                    regex = pattern[2:]  # 移除 'r:' 前缀
+                    if re.search(regex, file_name) or re.search(regex, relative_path):
+                        return False
+                
+                # 处理普通的 glob 模式
+                else:
+                    # 检查文件名匹配
+                    if fnmatch(file_name, pattern):
+                        return False
+                    # 检查完整路径匹配
+                    if fnmatch(relative_path, pattern):
+                        return False
+            except re.error as e:
+                logging.error(f"无效的正则表达式 '{pattern}': {e}")
+                continue
+            except Exception as e:
+                logging.error(f"处理排除规则 '{pattern}' 时出错: {e}")
+                continue
+
         return True
 
     def on_modified(self, event):

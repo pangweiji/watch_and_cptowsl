@@ -44,3 +44,17 @@ FileSync 是一个用于 Windows 和 WSL 之间实时文件同步的工具。它
 ## 配置文件
 
 配置文件 `sync_config.json` 位于程序所在目录，包含以下内容：
+
+```json
+{
+  "exclude_patterns": [
+    "node_modules/",      // 精确匹配 node_modules 目录
+    "r:.*\\.tmp$",       // 正则匹配所有 .tmp 结尾的文件
+    "*.pyc",             // glob 匹配所有 .pyc 文件
+    "build/",            // 精确匹配 build 目录
+    "r:^test_.*\\.py$"   // 正则匹配所有以 test_ 开头的 Python 文件
+  ]
+}
+```
+
+这样的修改使得文件排除规则更加灵活和精确，可以更好地满足不同的匹配需求。
